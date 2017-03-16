@@ -78,29 +78,7 @@ def populate_matrix(word_index, word_list):
 
             m[current, after] += 1
 
-    # # Open a file in "w"rite mode
-    # filters = tables.Filters(complib='blosc', complevel=5)
-    # fileh = tables.open_file("normed_matrices.h5", mode = "w", filters=filters)
-
-    # # Create a new group
-    # group = fileh.create_group(fileh.root, "webster")
-
-    # tables_desc = {}
-    # print "creating column headers"
-    # for index, key in enumerate(tqdm(word_index)):
-    #     header = str(key)
-    #     header = header.replace("\\", "_bslash_")
-    #     header = header.replace("/", "_fslash_")
-    #     if header == '.': header = '_period_'
-    #     if "/" in header: print header
-    #     tables_desc[header] = tables.Float32Col(pos='%s'%index)
-
-    # # Create a new table in newgroup group
-    # table = fileh.create_table(group, 'stochastic', tables_desc)
-
     o = np.ones((n,1))
-    #sums = np.dot(o,m)
-    #print type(sums)
 
     print 'populating sparse ones matrix'
     o_sparse = csr_matrix((n,1), dtype=np.int8).toarray()
@@ -124,10 +102,6 @@ def populate_matrix(word_index, word_list):
         for element in nz_elements:
             m[word_index[key],element] /= total
 
-        # table.append(m[word_index[key],:])
-
-    # fileh.close()
-
     return m
 
 def response(word_index, t_matrix):
@@ -136,7 +110,7 @@ def response(word_index, t_matrix):
     m, n = t_matrix.shape
 
     while True:
-        index = random.randint(0, n)
+        index = random.randint(0, n-1)
         choice = t_matrix[word_index['start_of_sentence'],index]
 
         if choice > random.random():
@@ -151,23 +125,24 @@ def response(word_index, t_matrix):
     while True:
         current_word = next_word
 
-        index = random.randint(0, n)
+        index = random.randint(0, n-1)
         choice = t_matrix[current_word,index]
 
         if choice > random.random():
             next_word = index
+            if next_word == word_index['end_of_sentence']:
+                output += "."
+                return output
             for word, col in word_index.iteritems():
                 if col == index:
-                    output += word
-            if next_word == 'end_of_sentence':
-                break
-
-    print output
+                    output += " %s" % word
 
     return
 
 
 def main():
+
+    number = 10
 
     dictionary = clean_websters()
 
@@ -175,6 +150,10 @@ def main():
 
     weight_matrix = populate_matrix(all_words, dictionary)
 
-    response(all_words, weight_matrix)
+    for i in range(number):
+        definition = response(all_words, weight_matrix)
+        print "definition: %s" % definition
+
+    return
 
 main()
