@@ -78,15 +78,6 @@ def populate_matrix(word_index, word_list):
 
             m[current, after] += 1
 
-    o = np.ones((n,1))
-
-    print 'populating sparse ones matrix'
-    o_sparse = csr_matrix((n,1), dtype=np.int8).toarray()
-    o_sparse = o
-    print 'dot product'
-    sums = o_sparse * m
-    print type(sums)
-
     nz_elements = []
 
     print "normalizing sparse matrix"
@@ -131,7 +122,6 @@ def response(word_index, t_matrix):
         if choice > random.random():
             next_word = index
             if next_word == word_index['end_of_sentence']:
-                output += "."
                 return output
             for word, col in word_index.iteritems():
                 if col == index:
