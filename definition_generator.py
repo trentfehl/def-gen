@@ -2,6 +2,9 @@ import numpy as np
 from tqdm import tqdm
 from scipy.sparse import csr_matrix
 
+# Ignore divide by 0 in matrix probability calc
+np.seterr(divide='ignore', invalid='ignore')
+
 def clean_text(fname = 'websters_1913_short.txt'):
     """Clean dictionary text file
 
@@ -14,7 +17,7 @@ def clean_text(fname = 'websters_1913_short.txt'):
     List of lists. Each inner list is a definition.
     """
 
-    with open(fname, 'r', encoding="ISO-8859-1") as f:
+    with open(fname, 'r') as f:
 
         list_of_defs = []
 
@@ -64,12 +67,13 @@ def create_index_of_words(list_of_defs):
 
     return word_dict
 
+
 def populate_matrix(word_dict, list_of_defs):
 
     n = len(word_dict)
 
     # Form empty transition matrix
-    trans_mat = csr_matrix((n,n), dtype=np.float32).toarray()
+    trans_mat = csr_matrix((n,n), dtype=np.float16).toarray()
 
     # Populate sparse matrix with number of transitions
     for i_row, row in enumerate(tqdm(list_of_defs)):
@@ -98,14 +102,14 @@ def populate_matrix(word_dict, list_of_defs):
 
         total = sum(trans_mat[word_dict[key],:])
 
-        # Identify any words that have no words following them
         if total == 0:
             continue
 
-        else:
-            prob_mat = trans_mat / trans_mat.sum(axis=0)
+    prob_mat = trans_mat / trans_mat.sum(axis=0).T
+    print(prob_mat)
 
     return prob_mat
+
 
 def response(word_dict, t_matrix):
 
@@ -145,6 +149,7 @@ def response(word_dict, t_matrix):
 def main():
 
     list_of_defs = clean_text('websters_1913.txt')
+    # list_of_defs = clean_text()
 
     word_dict = create_index_of_words(list_of_defs)
 
