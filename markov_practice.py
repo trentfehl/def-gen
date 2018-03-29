@@ -1,112 +1,124 @@
 import numpy as np
 from tqdm import tqdm
-import tables
 from scipy.sparse import csr_matrix
-import random
-import re
 
-global fileName
-fileName = 'matrix.h5'
+def clean_text(fname = 'websters_1913_short.txt'):
+    """Clean dictionary text file
 
-def clean_websters():
-    # cleaning up dictionary text file
-    with open('websters_1913_short.txt', 'r') as f1:
-        d = False
+    Input:
 
-        defn = []
-        dictionary = []
+    Text file version of dictionary. Definitions start with "Defn:"
 
-        for row in f1:
-            line = row.split()
+    Output:
 
-            if line:
-                if line[0] == 'Defn:':
-                    line.pop(0)
-                    d = True
+    List of lists. Each inner list is a definition.
+    """
 
-            if not line and d == True:
-                d = False
-                for index, element in enumerate(defn):
-                    if defn[index] == '[Obs.]':
-                        defn = defn[:index]
-                        break
+    with open(fname, 'r', encoding="ISO-8859-1") as f:
 
-                # adding each definitions to a list
-                dictionary.append(defn[:])
-                del defn[:]
+        list_of_defs = []
 
-            if d == True: defn += line
-    return dictionary
+        while True:
+            row = f.readline()
+            if not row: break
 
-def create_index_of_words(word_list):
-    all_words = {}
-    column = 0
+            if 'Defn:' in row:
 
-    print "building word list"
-    for row in tqdm(word_list):
+                # Read in first line of definition
+                definition = row.split()[1:]
+
+                # Add subsequent lines of definition
+                while row and row != "\n":
+                    row = f.readline()
+                    definition += row.split()
+
+                # Add definition to list of defintions
+                list_of_defs.append(definition)
+
+    return list_of_defs
+
+def create_index_of_words(list_of_defs):
+    """Create dict for index of words
+
+    Input:
+
+    List of lists. Each inner list contains one word per element.
+
+    Output:
+
+    Dict with each key is a word and each value is a row and column number
+    """
+
+    # Create dict and index variable
+    word_dict = {}
+    index = 0
+
+    for row in tqdm(list_of_defs):
         for word in row:
-            if word not in all_words:
-                all_words[word] = column
-                column += 1
+            if word not in word_dict:
+                word_dict[word] = index
+                index += 1
 
-    all_words['start_of_sentence'] = column
-    all_words['end_of_sentence'] = column+1
+    word_dict['start_of_sentence'] = index
+    word_dict['end_of_sentence'] = index + 1
 
-    return all_words
+    return word_dict
 
-def populate_matrix(word_index, word_list):
+def populate_matrix(word_dict, list_of_defs):
 
-    n = len(word_index)
+    n = len(word_dict)
 
-    m = csr_matrix((n,n), dtype=np.float32).toarray()
+    # Form empty transition matrix
+    trans_mat = csr_matrix((n,n), dtype=np.float32).toarray()
 
-    print "populating sparse matrix"
-    for i_row, row in enumerate(tqdm(word_list)):
+    # Populate sparse matrix with number of transitions
+    for i_row, row in enumerate(tqdm(list_of_defs)):
+
+        current = word_dict['start_of_sentence']
+
+        try:
+            after = word_dict[row[0]]
+        except IndexError: continue
+
+        trans_mat[current, after] += 1
 
         for i_word, word in enumerate(row):
 
-            if i_word == 0:
-                current = word_index['start_of_sentence']
-                after = word_index[word]
-                m[current, after] += 1
+            current = word_dict[word]
 
             try:
-                current = word_index[word]
-                after = word_index[row[i_word+1]]
+                after = word_dict[row[i_word+1]]
             except IndexError:
-                after = word_index['end_of_sentence']
+                after = word_dict['end_of_sentence']
 
-            m[current, after] += 1
+            trans_mat[current, after] += 1
 
-    nz_elements = []
+    # Convert transition matrix to probability matrix
+    for key in tqdm(word_dict):
 
-    print "normalizing sparse matrix"
-    for key in tqdm(word_index):
+        total = sum(trans_mat[word_dict[key],:])
 
-        total = sum(m[word_index[key],:])
-        total = 1
+        # Identify any words that have no words following them
+        if total == 0:
+            continue
 
-        if total == 0: continue
+        else:
+            prob_mat = trans_mat / trans_mat.sum(axis=0)
 
-        nz_elements = np.nonzero(m[word_index[key],:])
+    return prob_mat
 
-        for element in nz_elements:
-            m[word_index[key],element] /= total
-
-    return m
-
-def response(word_index, t_matrix):
+def response(word_dict, t_matrix):
 
     choice = 0
     m, n = t_matrix.shape
 
     while True:
         index = random.randint(0, n-1)
-        choice = t_matrix[word_index['start_of_sentence'],index]
+        choice = t_matrix[word_dict['start_of_sentence'],index]
 
         if choice > random.random():
             next_word = index
-            for word, col in word_index.iteritems():
+            for word, col in word_dict.iteritems():
                 if col == index:
                     output = word
             break
@@ -121,9 +133,9 @@ def response(word_index, t_matrix):
 
         if choice > random.random():
             next_word = index
-            if next_word == word_index['end_of_sentence']:
+            if next_word == word_dict['end_of_sentence']:
                 return output
-            for word, col in word_index.iteritems():
+            for word, col in word_dict.iteritems():
                 if col == index:
                     output += " %s" % word
 
@@ -132,18 +144,23 @@ def response(word_index, t_matrix):
 
 def main():
 
-    number = 10
+    list_of_defs = clean_text('websters_1913.txt')
 
-    dictionary = clean_websters()
+    word_dict = create_index_of_words(list_of_defs)
 
-    all_words = create_index_of_words(dictionary)
+    prob_mat = populate_matrix(word_dict, list_of_defs)
 
-    weight_matrix = populate_matrix(all_words, dictionary)
-
-    for i in range(number):
-        definition = response(all_words, weight_matrix)
-        print "definition: %s" % definition
+    print(type(prob_mat))
+    print(prob_mat.size)
+    print(prob_mat.shape)
 
     return
 
+"""
+
+    for i in range(number):
+        definition = response(word_dict, weight_matrix)
+        print "definition: %s" % definition
+
+"""
 main()
