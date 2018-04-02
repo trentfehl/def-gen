@@ -39,6 +39,8 @@ def clean_text(fname = 'websters_1913_short.txt'):
                 # Add definition to list of defintions
                 list_of_defs.append(definition)
 
+    print("%s definitions found in %s." % (len(list_of_defs), fname))
+
     return list_of_defs
 
 def create_index_of_words(list_of_defs):
@@ -57,6 +59,7 @@ def create_index_of_words(list_of_defs):
     unique_words = {}
     index = 0
 
+    print("Building dict of unique words...")
     for row in tqdm(list_of_defs):
         for word in row:
             if word not in unique_words:
@@ -77,6 +80,7 @@ def populate_matrix(unique_words, list_of_defs):
     t_matrix = csr_matrix((n,n), dtype=np.float32).toarray()
 
     # Populate sparse matrix with number of transitions
+    print("Populating transition matrix...")
     for i_row, row in enumerate(tqdm(list_of_defs)):
 
         current = unique_words['start_of_definition']
@@ -117,27 +121,29 @@ def get_next_word(current_word, t_matrix, unique_words):
     # Randomly select one of the nonzero elements
     nonzero_probs = np.nonzero(prob_array)
 
+    iterations = 0
+
     while True:
         choice = random.choice(nonzero_probs[0])
 
         choice_prob = prob_array[choice]
         random_prob = random.random()
 
-        if choice_prob > random_prob:
-            print('Chosen: %s < %s (%s)' % (random_prob, choice_prob, choice))
+        iterations += 1
 
+        if choice_prob > random_prob:
             for key, value in unique_words.items():
                 if value == choice:
 
-                    print('Word chosen: %s' % key)
+                    print('Choice #%.06d prob %.5f > Rand prob %.5f -> Word chosen: \"%s\"' % (
+                            iterations, \
+                            choice_prob, \
+                            random_prob,\
+                            key))
 
                     next_word = key
 
                     return next_word
-        """
-        else:
-            print('NOT chosen: %s > %s (%s)' % (random_prob, choice_prob, choice))
-        """
 
 
 def main():
@@ -152,15 +158,21 @@ def main():
     t_matrix = populate_matrix(unique_words, list_of_defs)
 
     current_word = 'start_of_definition'
-
-    output_def = 'Definition = '
+    output_def = 'Definition: '
 
     while True:
         next_word = get_next_word(current_word, t_matrix, unique_words)
 
         if next_word == 'end_of_definition':
             print(output_def)
-            return
+            print()
+            answer = input("Generate another definition? (y/n) ")
+            if answer in ["Y", "y", "yes"]:
+                current_word = 'start_of_definition'
+                output_def = 'Definition: '
+                continue
+            else:
+                return
 
         else:
             output_def += next_word + ' '
