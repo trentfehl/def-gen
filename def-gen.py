@@ -39,111 +39,130 @@ def clean_text(fname = 'websters_1913_short.txt'):
                 # Add definition to list of defintions
                 list_of_defs.append(definition)
 
-    print("%s definitions found in %s." % (len(list_of_defs), fname))
+    print("%s definitions found in %s" % (len(list_of_defs), fname))
 
     return list_of_defs
 
-def create_index_of_words(list_of_defs):
-    '''Create dict for index of words
 
-    Input:
+class def_gen():
 
-    List of lists. Each inner list contains one word per element.
+    def __init__(self, list_of_defs):
+        """Instantiate dictionary of unique words and list of definitions"""
+        self.unique_words = {}
+        self.list_of_defs = list_of_defs
 
-    Output:
+    def create_index_of_words(self):
+        """Create dict of unique words in dictionary definitions."""
 
-    Dict with each key is a word and each value is a row and column number
-    '''
+        # Start index at 0
+        index = 0
 
-    # Create dict and index variable
-    unique_words = {}
-    index = 0
+        print("Building dict of unique words...")
+        for row in tqdm(self.list_of_defs):
+            for word in row:
+                if word not in self.unique_words:
+                    # Assign each unique word an index
+                    self.unique_words[word] = index
+                    index += 1
 
-    print("Building dict of unique words...")
-    for row in tqdm(list_of_defs):
-        for word in row:
-            if word not in unique_words:
-                unique_words[word] = index
-                index += 1
-
-    unique_words['start_of_definition'] = index
-    unique_words['end_of_definition'] = index + 1
-
-    return unique_words
+        # Transitions from start and to end of definitions needed
+        self.unique_words['start_of_definition'] = index
+        self.unique_words['end_of_definition'] = index + 1
 
 
-def populate_matrix(unique_words, list_of_defs):
+    def create_trans_matrix(self):
+        """Create matrix of number of transitions from one word to another."""
 
-    n = len(unique_words)
+        # Create empty sparse transition matrix
+        n = len(self.unique_words)
+        self.t_matrix = csr_matrix((n,n), dtype=np.float32).toarray()
 
-    # Form empty transition matrix
-    t_matrix = csr_matrix((n,n), dtype=np.float32).toarray()
+        print("Populating sparse transition matrix...")
+        for i_row, row in enumerate(tqdm(self.list_of_defs)):
 
-    # Populate sparse matrix with number of transitions
-    print("Populating transition matrix...")
-    for i_row, row in enumerate(tqdm(list_of_defs)):
+            # First transition is from 'start_of_definition' to first element
+            current_word = self.unique_words['start_of_definition']
 
-        current = unique_words['start_of_definition']
+            try: next_word = self.unique_words[row[0]]
+            except IndexError: continue
 
-        try:
-            after = unique_words[row[0]]
-        except IndexError: continue
+            self.t_matrix[current_word, next_word] += 1
 
-        t_matrix[current, after] += 1
+            # Loop through each definition
+            for i_word, word in enumerate(row):
+                current_word = self.unique_words[word]
 
-        for i_word, word in enumerate(row):
+                try:
+                    next_word = self.unique_words[row[i_word+1]]
+                except IndexError:
+                    next_word = self.unique_words['end_of_definition']
 
-            current = unique_words[word]
+                # Add one to the right cell for each transition
+                self.t_matrix[current_word, next_word] += 1
 
-            try:
-                after = unique_words[row[i_word+1]]
-            except IndexError:
-                after = unique_words['end_of_definition']
+    def get_transition_probability(self, word):
+        """ Convert specified row contents from number of transitions to
+        next word to probability of transition to the next word.
 
-            t_matrix[current, after] += 1
+        Input:
 
-    return t_matrix
+        String specifying which row is to be used.
 
-def get_transition_probability(key, t_matrix, unique_words):
+        Output:
 
-    # Convert transition matrix to probability matrix
+        Numpy array with probabilities of transitioning to the next word.
+        Elements of array are floats between 0.0 and 1.0.
+        """
 
-    column_sum = t_matrix[unique_words[key],:].sum()
+        # Convert transition matrix to probability matrix
+        row_sum = self.t_matrix[self.unique_words[word],:].sum()
+        prob_array = self.t_matrix[self.unique_words[word],:] / row_sum
 
-    prob_array = t_matrix[unique_words[key],:] / column_sum
+        return prob_array
 
-    return prob_array
+    def get_next_word(self, current_word):
+        """ Take one word and choose the next word using the probabilities
+        in the transition matrix.
 
-def get_next_word(current_word, t_matrix, unique_words):
+        Input:
 
-    prob_array = get_transition_probability(current_word, t_matrix, unique_words)
+        String specifying which word is the current word.
 
-    # Randomly select one of the nonzero elements
-    nonzero_probs = np.nonzero(prob_array)
+        Output:
 
-    iterations = 0
+        String specifying which word is the next word.
+        """
 
-    while True:
-        choice = random.choice(nonzero_probs[0])
+        # Create array of indices with nonzero transition probability
+        prob_array = self.get_transition_probability(current_word)
+        nonzero_probs = np.nonzero(prob_array)
 
-        choice_prob = prob_array[choice]
-        random_prob = random.random()
+        iterations = 0
 
-        iterations += 1
+        while True:
+            # Randomly select one of the nonzero elements
+            choice = random.choice(nonzero_probs[0])
 
-        if choice_prob > random_prob:
-            for key, value in unique_words.items():
-                if value == choice:
+            choice_prob = prob_array[choice]
+            random_prob = random.random()
 
-                    print('Choice #%.06d prob %.5f > Rand prob %.5f -> Word chosen: \"%s\"' % (
-                            iterations, \
-                            choice_prob, \
-                            random_prob,\
-                            key))
+            # Keep track of how many tries it takes
+            iterations += 1
 
-                    next_word = key
+            # Next word is only selected if prob is greater than random prob
+            if choice_prob > random_prob:
+                for key, value in self.unique_words.items():
+                    if value == choice:
 
-                    return next_word
+                        print('Choice #%.05d probability %.5f > Rand probability %.5f -> Word chosen: \"%s\"' % (
+                                iterations, \
+                                choice_prob, \
+                                random_prob,\
+                                key))
+
+                        next_word = key
+
+                        return next_word
 
 
 def main():
@@ -151,29 +170,38 @@ def main():
     # Generate a list of definitions from a text file of Websters dictionary
     list_of_defs = clean_text('websters_1913.txt')
 
-    # Create index of unique words found in definitions
-    unique_words = create_index_of_words(list_of_defs)
+    # Instantiate def_gen class and provide it list of definitions
+    dg = def_gen(list_of_defs)
 
-    # Generate transition matrix based on the definitions found in the dictionary
-    t_matrix = populate_matrix(unique_words, list_of_defs)
+    # Create index of unique words found in definitions
+    dg.create_index_of_words()
+
+    # Create transition matrix based on the definitions found in the dictionary
+    dg.create_trans_matrix()
 
     current_word = 'start_of_definition'
     output_def = 'Definition: '
 
     while True:
-        next_word = get_next_word(current_word, t_matrix, unique_words)
+        next_word = dg.get_next_word(current_word)
 
+        # If definition is over, print definition and prompt for re-run
         if next_word == 'end_of_definition':
+
             print(output_def)
             print()
+
             answer = input("Generate another definition? (y/n) ")
+
             if answer in ["Y", "y", "yes"]:
                 current_word = 'start_of_definition'
                 output_def = 'Definition: '
                 continue
+
             else:
                 return
 
+        # If definition is not over, add word to definition and loop
         else:
             output_def += next_word + ' '
             current_word = next_word
