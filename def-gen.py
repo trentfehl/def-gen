@@ -6,7 +6,7 @@ from scipy.sparse import csr_matrix
 # Ignore divide by 0 in matrix probability calc
 np.seterr(divide='ignore', invalid='ignore')
 
-def clean_text(fname = 'websters_1913_short.txt'):
+def clean_text(fname = 'websters_1913.txt'):
     '''Clean dictionary text file
 
     Input:
@@ -168,7 +168,7 @@ class def_gen():
 def main():
 
     # Generate a list of definitions from a text file of Websters dictionary
-    list_of_defs = clean_text('websters_1913.txt')
+    list_of_defs = clean_text()
 
     # Instantiate def_gen class and provide it list of definitions
     dg = def_gen(list_of_defs)
